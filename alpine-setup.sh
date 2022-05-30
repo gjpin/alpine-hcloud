@@ -4,7 +4,7 @@
 rc-update add sshd default
 
 # Configure networking
-cat > /etc/network/interfaces <<-EOF
+tee /etc/network/interfaces << EOF
 iface lo inet loopback
 iface eth0 inet dhcp
 EOF
@@ -16,9 +16,15 @@ rc-update add net.eth0 default
 rc-update add net.lo boot
 
 # Configure Cloudflare DNS servers
-cat > /etc/resolv.conf <<-EOF
+tee /etc/resolv.conf << EOF
 nameserver 1.1.1.1
 nameserver 1.0.0.1
+EOF
+
+# Avoid overwriting resolv.conf by DHCP
+mkdir -p /etc/udhcpc
+tee /etc/udhcpc/udhcpc.conf << EOF
+RESOLV_CONF="NO"
 EOF
 
 # Create root ssh directory
@@ -26,7 +32,7 @@ mkdir -p /root/.ssh
 chmod 700 /root/.ssh
 
 # Grab config from metadata service
-cat > /bin/metadata-init <<-EOF
+tee /bin/metadata-init << EOF
 #!/bin/sh
 
 # Expand the size of the mounted filesystem
@@ -46,14 +52,17 @@ exit 0
 EOF
 
 # Create metadata-init OpenRC service
-cat > /etc/init.d/metadata-init <<-EOF
+tee /etc/init.d/metadata-init << EOF
 #!/sbin/openrc-run
+
 depend() {
     need net.eth0
 }
+
 command="/bin/metadata-init"
 command_args=""
 pidfile="/tmp/metadata-init.pid"
+
 command_background="yes"
 output_log="/var/log/metadata-init.log"
 error_log="/var/log/metadata-init.err"
@@ -66,40 +75,8 @@ chmod +x /bin/metadata-init
 # Enable metadata-init service
 rc-update add metadata-init default
 
-# Set nameservers service, since hcloud overrides
-# the existing nameservers
-cat > /bin/set-nameservers <<-EOF
-#!/bin/sh
-
-tee /etc/resolv.conf << EOC
-nameserver 1.1.1.1
-nameserver 1.0.0.1
-EOC
-EOF
-
-# Create set-nameservers OpenRC service
-cat > /etc/init.d/set-nameservers <<-EOF
-#!/sbin/openrc-run
-depend() {
-    before net.eth0
-}
-command="/bin/set-nameservers"
-command_args=""
-pidfile="/tmp/set-nameservers.pid"
-command_background="yes"
-output_log="/var/log/set-nameservers.log"
-error_log="/var/log/set-nameservers.err"
-EOF
-
-# Make set-nameservers and service executable
-chmod +x /etc/init.d/set-nameservers
-chmod +x /bin/set-nameservers
-
-# Enable set-nameservers service
-rc-update add set-nameservers default
-
 # Setup SSHD
-cat > /etc/ssh/sshd_config <<-EOF
+tee /etc/ssh/sshd_config << EOF
 Port 50004
 PermitRootLogin yes
 PubkeyAuthentication yes
